@@ -81,82 +81,73 @@ private struct ClickView: View {
                         TextField("", text: $viewModel.intervalMilliseconds, prompt: Text("100"))
                             .labelsHidden()
                             .textFieldStyle(.roundedBorder)
-                            .frame(width: 80)
-                            .multilineTextAlignment(.trailing)
-                        
-                        Stepper("", value: Binding(get: {
-                            Int(viewModel.intervalMilliseconds) ?? 100
-                        }, set: {
-                            viewModel.intervalMilliseconds = String($0)
-                        }), in: 10...10000, step: 10)
-                        .labelsHidden()
+                        Text("ms")
+                            .font(.caption2)
+                            .foregroundStyle(.secondary)
                     }
+                    .frame(width: 100)
                 } label: {
-                    FormRowLabel("Interval (ms)", subtitle: "Time between clicks in milliseconds.")
+                    FormRowLabel("Interval", subtitle: "Time between clicks.", icon: "timer")
                 }
 
                 LabeledContent {
                     HStack {
-                        TextField("", text: $viewModel.repeatCount, prompt: Text("100"))
+                        TextField("", text: $viewModel.repeatCount, prompt: Text("0"))
                             .labelsHidden()
                             .textFieldStyle(.roundedBorder)
-                            .frame(width: 80)
-                            .multilineTextAlignment(.trailing)
-                        
-                        Stepper("", value: Binding(get: {
-                            Int(viewModel.repeatCount) ?? 100
-                        }, set: {
-                            viewModel.repeatCount = String($0)
-                        }), in: 0...1000000, step: 100)
-                        .labelsHidden()
+                        Text("times")
+                            .font(.caption2)
+                            .foregroundStyle(.secondary)
                     }
+                    .frame(width: 100)
                 } label: {
-                    FormRowLabel("Repeat Count", subtitle: "Set 0 to run continuously.")
+                    FormRowLabel("Repeat", subtitle: "0 for infinite.", icon: "repeat")
                 }
-
+                
                 Picker(selection: $viewModel.mouseButton) {
                     ForEach(ClickMouseButton.allCases) { button in
                         Text(button.title).tag(button)
                     }
                 } label: {
-                    FormRowLabel("Button", subtitle: "Choose the mouse button to automate.")
+                    FormRowLabel("Button", subtitle: "Mouse button to use.", icon: "computermouse")
                 }
                 .pickerStyle(.segmented)
             } header: {
-                Text("Click Macro")
+                Text("Automation")
             }
 
             Section {
                 Toggle(isOn: $viewModel.useFixedPosition) {
                     FormRowLabel(
-                        "Use Fixed Position",
-                        subtitle: "Click a saved coordinate instead of the current cursor location."
+                        "Fixed Position",
+                        subtitle: "Click at a specific screen coordinate.",
+                        icon: "scope"
                     )
                 }
-                .toggleStyle(.switch)
-
-                LabeledContent {
-                    Text(viewModel.savedPositionDescription)
-                        .foregroundStyle(.secondary)
-                        .monospacedDigit()
-                } label: {
-                    FormRowLabel(
-                        "Saved Position",
-                        subtitle: "Capture once, then reuse this coordinate."
-                    )
-                }
-
-                HStack {
-                    FormRowLabel(
-                        "Capture Cursor",
-                        subtitle: "Save the current cursor location."
-                    )
-                    Spacer()
-                    Button("Capture") {
-                        viewModel.captureCurrentCursorPosition()
+                
+                if viewModel.useFixedPosition {
+                    LabeledContent {
+                        HStack {
+                            Text(viewModel.savedPositionDescription)
+                                .font(.system(.caption, design: .monospaced))
+                                .foregroundStyle(viewModel.savedPosition == nil ? .secondary : .primary)
+                            
+                            Spacer()
+                            
+                            Button {
+                                viewModel.captureCurrentCursorPosition()
+                            } label: {
+                                Label("Capture", systemImage: "target")
+                            }
+                            .buttonStyle(.bordered)
+                            .controlSize(.small)
+                            .disabled(viewModel.isRunning || viewModel.isStartScheduled)
+                        }
+                    } label: {
+                        Text("Current Position")
+                            .font(.caption2)
+                            .foregroundStyle(.secondary)
                     }
-                    .disabled(viewModel.isRunning || viewModel.isStartScheduled)
-                    .buttonStyle(.bordered)
                 }
             } header: {
                 Text("Position")
@@ -166,29 +157,28 @@ private struct ClickView: View {
                 HStack {
                     FormRowLabel(
                         "Accessibility",
-                        subtitle: "Required to post synthetic mouse events."
+                        subtitle: "Required for mouse automation.",
+                        icon: "hand.raised.fill"
                     )
                     Spacer()
-                    PermissionStatusBadge(status: permissionStatus)
-                    Button("Request…") {
-                        viewModel.requestAccessibilityPermission()
+                    
+                    HStack(spacing: 8) {
+                        Image(systemName: permissionStatus.icon)
+                            .foregroundStyle(permissionStatus.color)
+                        
+                        Text(permissionStatus.title)
+                            .font(.caption.weight(.medium))
+                            .foregroundStyle(permissionStatus.color)
+                        
+                        Button("Settings") {
+                            viewModel.openAccessibilitySettings()
+                        }
+                        .buttonStyle(.bordered)
+                        .controlSize(.small)
                     }
-                    .buttonStyle(.bordered)
-                }
-
-                HStack {
-                    FormRowLabel(
-                        "System Settings",
-                        subtitle: "Open Privacy & Security > Accessibility."
-                    )
-                    Spacer()
-                    Button("Open…") {
-                        viewModel.openAccessibilitySettings()
-                    }
-                    .buttonStyle(.bordered)
                 }
             } header: {
-                Text("Permissions")
+                Text("Status")
             }
         }
         .safeAreaInset(edge: .bottom) {
@@ -202,43 +192,46 @@ private struct ClickView: View {
     }
 
     private var runControlBar: some View {
-        HStack(spacing: 24) {
-            VStack(alignment: .leading, spacing: 6) {
-                HStack(alignment: .lastTextBaseline) {
-                    Text(viewModel.statusMessage)
-                        .font(.system(size: 11, weight: .medium))
-                        .foregroundStyle((viewModel.isRunning || viewModel.isStartScheduled) ? .primary : .secondary)
-                        .animation(.default, value: viewModel.statusMessage)
-
-                    Spacer()
-
-                    if viewModel.currentRunTargetCount > 0 {
+        HStack(spacing: 20) {
+            VStack(alignment: .leading, spacing: 4) {
+                Text(viewModel.statusMessage)
+                    .font(.system(.subheadline, design: .rounded).weight(.medium))
+                    .foregroundStyle(.primary)
+                    .animation(.easeInOut, value: viewModel.statusMessage)
+                
+                if viewModel.isRunning || viewModel.isStartScheduled {
+                    HStack(spacing: 8) {
+                        ProgressView(value: viewModel.displayedProgressValue)
+                            .progressViewStyle(.linear)
+                            .frame(width: 100)
+                            .tint(Color.accentColor)
+                            .animation(.spring(response: 0.3, dampingFraction: 0.7), value: viewModel.displayedProgressValue)
+                        
                         Text(viewModel.progressPercentageText)
-                            .font(.system(size: 10, design: .monospaced).weight(.bold))
+                            .font(.system(.caption2, design: .monospaced))
                             .foregroundStyle(.secondary)
                     }
+                } else {
+                    Text("Total clicks: \(viewModel.clickCount)")
+                        .font(.system(.caption2, design: .rounded))
+                        .foregroundStyle(.secondary)
                 }
-
-                ProgressView(value: viewModel.displayedProgressValue, total: 1.0)
-                    .progressViewStyle(.linear)
-                    .tint(Color.accentColor)
-                    .animation(.spring(response: 0.3, dampingFraction: 0.7), value: viewModel.displayedProgressValue)
             }
-
+            
+            Spacer()
+            
             Button {
                 if viewModel.isRunning || viewModel.isStartScheduled {
-                    viewModel.stop(reason: "Stopped by user.")
+                    viewModel.stop(reason: "Stopped")
                 } else {
                     viewModel.start()
                 }
             } label: {
-                HStack(spacing: 8) {
-                    Image(systemName: (viewModel.isRunning || viewModel.isStartScheduled) ? "stop.fill" : "play.fill")
-                        .imageScale(.small)
-                    Text((viewModel.isRunning || viewModel.isStartScheduled) ? "Stop" : "Start")
-                        .font(.headline)
-                }
-                .frame(width: 100, height: 32)
+                Label(
+                    (viewModel.isRunning || viewModel.isStartScheduled) ? "Stop" : "Start",
+                    systemImage: (viewModel.isRunning || viewModel.isStartScheduled) ? "stop.fill" : "play.fill"
+                )
+                .frame(width: 80)
             }
             .keyboardShortcut(.return, modifiers: [])
             .buttonStyle(.borderedProminent)
@@ -259,24 +252,34 @@ private struct ClickView: View {
 private struct FormRowLabel: View {
     let title: String
     let subtitle: String?
+    let icon: String?
 
-    init(_ title: String, subtitle: String? = nil) {
+    init(_ title: String, subtitle: String? = nil, icon: String? = nil) {
         self.title = title
         self.subtitle = subtitle
+        self.icon = icon
     }
 
     var body: some View {
-        VStack(alignment: .leading, spacing: 1) {
-            Text(title)
-                .font(.body)
+        HStack(spacing: 12) {
+            if let icon = icon {
+                Image(systemName: icon)
+                    .font(.system(size: 14, weight: .medium))
+                    .foregroundStyle(Color.accentColor)
+                    .frame(width: 20)
+            }
             
-            if let subtitle {
-                Text(subtitle)
-                    .font(.caption)
-                    .foregroundStyle(.secondary)
-                    .fixedSize(horizontal: false, vertical: true)
+            VStack(alignment: .leading, spacing: 2) {
+                Text(title)
+                    .font(.system(.body, design: .rounded))
+                if let subtitle = subtitle {
+                    Text(subtitle)
+                        .font(.system(.caption2))
+                        .foregroundStyle(.secondary)
+                }
             }
         }
+        .fixedSize(horizontal: false, vertical: true)
     }
 }
 
@@ -599,40 +602,47 @@ private enum ClickMouseButton: String, CaseIterable, Identifiable {
 
 private struct AboutView: View {
     var body: some View {
-        VStack(spacing: 24) {
-            Spacer()
-            
-            Image(systemName: "cursorarrow.click.badge.clock")
-                .font(.system(size: 72))
-                .symbolRenderingMode(.hierarchical)
-                .foregroundStyle(Color.accentColor)
-            
-            VStack(spacing: 8) {
-                Text("MyAutoMouse")
-                    .font(.title.bold())
+        ScrollView {
+            VStack(spacing: 32) {
+                VStack(spacing: 16) {
+                    Image(systemName: "cursorarrow.click.badge.clock")
+                        .font(.system(size: 64))
+                        .symbolRenderingMode(.hierarchical)
+                        .foregroundStyle(Color.accentColor)
+                        .padding(.top, 40)
+                    
+                    VStack(spacing: 4) {
+                        Text("MyAutoMouse")
+                            .font(.system(.title, design: .rounded).bold())
+                        
+                        Text("Version 1.0.0")
+                            .font(.system(.caption, design: .monospaced))
+                            .foregroundStyle(.secondary)
+                    }
+                }
                 
-                Text("Version 1.0.0")
-                    .font(.caption)
+                Text("A simple, minimalist mouse macro utility\ndesigned for efficiency on macOS.")
+                    .font(.system(.subheadline, design: .rounded))
+                    .multilineTextAlignment(.center)
                     .foregroundStyle(.secondary)
+                    .padding(.horizontal, 32)
+                
+                VStack(alignment: .leading, spacing: 16) {
+                    AboutBullet(icon: "lock.shield.fill", text: "Securely interacts with accessibility services.")
+                    AboutBullet(icon: "cursorarrow.rays", text: "Supports multiple mouse buttons and positions.")
+                    AboutBullet(icon: "timer", text: "Precision timing for automation tasks.")
+                }
+                .padding(.vertical, 8)
+                
+                Divider()
+                    .frame(width: 100)
+                
+                Text("© 2026 JiHoon K.")
+                    .font(.system(size: 10))
+                    .foregroundStyle(.tertiary)
+                    .padding(.bottom, 40)
             }
-            
-            Text("A minimalist mouse macro utility for macOS.")
-                .font(.subheadline)
-                .multilineTextAlignment(.center)
-                .padding(.horizontal)
-            
-            Divider()
-                .frame(width: 200)
-            
-            VStack(alignment: .leading, spacing: 12) {
-                AboutBullet(icon: "lock.shield", text: "Requires Accessibility permission")
-                AboutBullet(icon: "cursorarrow.rays", text: "Supports fixed or relative clicks")
-                AboutBullet(icon: "timer", text: "Adjustable interval and repeat count")
-            }
-            
-            Spacer()
         }
-        .padding()
     }
 }
 
@@ -641,14 +651,16 @@ private struct AboutBullet: View {
     let text: String
     
     var body: some View {
-        HStack(spacing: 12) {
+        HStack(spacing: 16) {
             Image(systemName: icon)
+                .font(.system(size: 18))
                 .symbolRenderingMode(.hierarchical)
                 .foregroundStyle(Color.accentColor)
-                .frame(width: 20)
+                .frame(width: 24, height: 24)
             
             Text(text)
-                .font(.subheadline)
+                .font(.system(.subheadline, design: .rounded))
+                .foregroundStyle(.primary)
         }
     }
 }
