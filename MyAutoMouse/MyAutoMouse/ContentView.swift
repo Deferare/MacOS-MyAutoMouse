@@ -137,11 +137,14 @@ private struct ClickView: View {
                             Button {
                                 viewModel.captureCurrentCursorPosition()
                             } label: {
-                                Label("Capture", systemImage: "target")
+                                Label(
+                                    viewModel.isCaptureScheduled ? "Capturing..." : "Capture",
+                                    systemImage: viewModel.isCaptureScheduled ? "hourglass" : "target"
+                                )
                             }
                             .buttonStyle(.bordered)
                             .controlSize(.small)
-                            .disabled(viewModel.isRunning || viewModel.isStartScheduled)
+                            .disabled(viewModel.isRunning || viewModel.isStartScheduled || viewModel.isCaptureScheduled)
                         }
                     } label: {
                         Text("Current Position")
@@ -326,6 +329,7 @@ private enum PermissionStatus {
 @MainActor
 private final class ClickMacroViewModel: ObservableObject {
     private let startDelaySeconds = 3
+    private let captureDelaySeconds = 3
 
     @Published var intervalMilliseconds: String = "100"
     @Published var repeatCount: String = "100"
@@ -335,15 +339,17 @@ private final class ClickMacroViewModel: ObservableObject {
     @Published private(set) var currentRunTargetCount = 0
     @Published private(set) var isRunning = false
     @Published private(set) var isStartScheduled = false
+    @Published private(set) var isCaptureScheduled = false
     @Published private(set) var accessibilityGranted = AXIsProcessTrusted()
     @Published private(set) var statusMessage = "Ready to start."
     @Published private(set) var savedPosition: CGPoint?
 
     private var timer: DispatchSourceTimer?
     private var delayedStartTask: Task<Void, Never>?
+    private var delayedCaptureTask: Task<Void, Never>?
 
     var canStart: Bool {
-        guard !isRunning, !isStartScheduled else {
+        guard !isRunning, !isStartScheduled, !isCaptureScheduled else {
             return false
         }
         guard let interval = Int(intervalMilliseconds), interval > 0 else {
@@ -402,16 +408,46 @@ private final class ClickMacroViewModel: ObservableObject {
     }
 
     func captureCurrentCursorPosition() {
-        guard let currentPosition = CGEvent(source: nil)?.location else {
-            statusMessage = "Capture failed."
+        guard !isCaptureScheduled else {
             return
         }
-        savedPosition = currentPosition
-        statusMessage = "Position captured."
+
+        isCaptureScheduled = true
+        delayedCaptureTask = Task { [weak self] in
+            guard let self else { return }
+            defer {
+                self.isCaptureScheduled = false
+                self.delayedCaptureTask = nil
+            }
+
+            for remaining in stride(from: self.captureDelaySeconds, through: 1, by: -1) {
+                self.statusMessage = "Capturing in \(remaining)s..."
+                do {
+                    try await Task.sleep(for: .seconds(1))
+                } catch {
+                    return
+                }
+                if Task.isCancelled {
+                    return
+                }
+            }
+
+            guard let currentPosition = CGEvent(source: nil)?.location else {
+                self.statusMessage = "Capture failed."
+                return
+            }
+            self.savedPosition = currentPosition
+            self.statusMessage = "Position captured."
+        }
     }
 
     func start() {
-        guard !isRunning, !isStartScheduled else { return }
+        guard !isRunning, !isStartScheduled, !isCaptureScheduled else {
+            if isCaptureScheduled {
+                statusMessage = "Wait for capture to finish."
+            }
+            return
+        }
 
         guard let interval = Int(intervalMilliseconds), interval > 0 else {
             statusMessage = "Invalid interval."
@@ -552,6 +588,7 @@ private final class ClickMacroViewModel: ObservableObject {
     }
 
     deinit {
+        delayedCaptureTask?.cancel()
         delayedStartTask?.cancel()
         timer?.cancel()
     }
