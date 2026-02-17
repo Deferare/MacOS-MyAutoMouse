@@ -82,7 +82,7 @@ private struct ClickView: View {
                         subtitle: "Time between clicks in milliseconds."
                     )
                     Spacer()
-                    TextField("", text: $viewModel.intervalMilliseconds, prompt: Text("500"))
+                    TextField("", text: $viewModel.intervalMilliseconds, prompt: Text("100"))
                         .labelsHidden()
                         .textFieldStyle(.roundedBorder)
                         .frame(width: 120)
@@ -96,7 +96,7 @@ private struct ClickView: View {
                         subtitle: "Set 0 to run continuously."
                     )
                     Spacer()
-                    TextField("", text: $viewModel.repeatCount, prompt: Text("0"))
+                    TextField("", text: $viewModel.repeatCount, prompt: Text("100"))
                         .labelsHidden()
                         .textFieldStyle(.roundedBorder)
                         .frame(width: 120)
@@ -315,8 +315,8 @@ private enum PermissionStatus {
 
 @MainActor
 private final class ClickMacroViewModel: ObservableObject {
-    @Published var intervalMilliseconds: String = "500"
-    @Published var repeatCount: String = "0"
+    @Published var intervalMilliseconds: String = "100"
+    @Published var repeatCount: String = "100"
     @Published var mouseButton: ClickMouseButton = .left
     @Published var useFixedPosition = false
     @Published private(set) var clickCount = 0
