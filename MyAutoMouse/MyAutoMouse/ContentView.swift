@@ -120,7 +120,7 @@ private struct ClickView: View {
                 Toggle(isOn: $viewModel.useFixedPosition) {
                     FormRowLabel(
                         "Fixed Position",
-                        subtitle: "Click at a specific screen coordinate.",
+                        subtitle: "Capture records the cursor position after 3 seconds.",
                         icon: "scope"
                     )
                 }
