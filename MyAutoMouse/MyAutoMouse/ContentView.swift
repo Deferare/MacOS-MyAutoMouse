@@ -151,44 +151,8 @@ private struct ClickView: View {
                     Button("Capture") {
                         viewModel.captureCurrentCursorPosition()
                     }
-                    .disabled(viewModel.isRunning)
+                    .disabled(viewModel.isRunning || viewModel.isStartScheduled)
                 }
-            }
-
-            Section("Run") {
-                HStack(alignment: .center) {
-                    FormRowLabel(
-                        "Controls",
-                        subtitle: "Start begins immediately. Stop halts the macro."
-                    )
-                    Spacer()
-                    HStack(spacing: 8) {
-                        Button("Start") {
-                            viewModel.start()
-                        }
-                        .keyboardShortcut(.return, modifiers: [])
-                        .buttonStyle(.borderedProminent)
-                        .disabled(viewModel.isRunning)
-
-                        Button("Stop") {
-                            viewModel.stop(reason: "Stopped by user.")
-                        }
-                        .disabled(!viewModel.isRunning)
-                    }
-                }
-
-                LabeledContent {
-                    Text("\(viewModel.clickCount)")
-                        .monospacedDigit()
-                        .frame(maxWidth: .infinity, alignment: .trailing)
-                } label: {
-                    FormRowLabel(
-                        "Clicks Sent",
-                        subtitle: "Number of click events posted in this run."
-                    )
-                }
-
-                FormHelpText(text: viewModel.statusMessage, leadingPadding: 0)
             }
 
             Section("Permissions") {
@@ -216,9 +180,72 @@ private struct ClickView: View {
                 }
             }
         }
+        .safeAreaInset(edge: .bottom) {
+            bottomControlContainer {
+                runControlBar
+            }
+        }
         .onAppear {
             viewModel.refreshAccessibilityStatus()
         }
+    }
+
+    private var runControlBar: some View {
+        HStack(spacing: 24) {
+            VStack(alignment: .leading, spacing: 8) {
+                HStack(alignment: .lastTextBaseline) {
+                    Text(viewModel.statusMessage)
+                        .font(.subheadline.weight(.semibold))
+                        .foregroundStyle(.secondary)
+                        .lineLimit(1)
+
+                    Spacer()
+
+                    Text(viewModel.progressPercentageText)
+                        .font(.system(.caption, design: .monospaced).weight(.bold))
+                        .foregroundStyle(.secondary)
+                }
+
+                ProgressView(value: viewModel.displayedProgressValue, total: 1.0)
+                    .progressViewStyle(.linear)
+                    .tint(progressTint)
+                    .scaleEffect(x: 1, y: 2, anchor: .center)
+                    .clipShape(Capsule())
+                    .animation(.spring(), value: viewModel.displayedProgressValue)
+            }
+
+            Button {
+                if viewModel.isRunning || viewModel.isStartScheduled {
+                    viewModel.stop(reason: "Stopped by user.")
+                } else {
+                    viewModel.start()
+                }
+            } label: {
+                HStack(spacing: 10) {
+                    Image(systemName: (viewModel.isRunning || viewModel.isStartScheduled) ? "stop.fill" : "play.fill")
+                        .font(.system(size: 14, weight: .black))
+                    Text((viewModel.isRunning || viewModel.isStartScheduled) ? "Stop" : "Start")
+                        .font(.system(size: 14, weight: .bold))
+                }
+                .frame(minWidth: 130, minHeight: 44)
+            }
+            .keyboardShortcut(.return, modifiers: [])
+            .buttonStyle(.borderedProminent)
+            .controlSize(.large)
+            .disabled((viewModel.isRunning || viewModel.isStartScheduled) ? false : !viewModel.canStart)
+        }
+    }
+
+    private var progressTint: Color {
+        viewModel.displayedProgressValue > 0 ? .accentColor : .clear
+    }
+
+    private func bottomControlContainer<Content: View>(@ViewBuilder content: () -> Content) -> some View {
+        content()
+            .padding(.horizontal, 24)
+            .padding(.vertical, 20)
+            .background(.ultraThinMaterial)
+            .overlay(Rectangle().frame(height: 1).foregroundStyle(.primary.opacity(0.05)), alignment: .top)
     }
 }
 
@@ -249,23 +276,6 @@ private struct FormRowLabel: View {
         .alignmentGuide(.firstTextBaseline) { dimensions in
             dimensions[VerticalAlignment.center]
         }
-    }
-}
-
-private struct FormHelpText: View {
-    let text: String
-    var leadingPadding: CGFloat = 24
-
-    var body: some View {
-        HStack(alignment: .firstTextBaseline, spacing: 0) {
-            Text(text)
-                .font(.callout)
-                .foregroundStyle(.secondary)
-                .multilineTextAlignment(.leading)
-                .fixedSize(horizontal: false, vertical: true)
-            Spacer(minLength: 0)
-        }
-        .padding(.leading, leadingPadding)
     }
 }
 
@@ -315,17 +325,51 @@ private enum PermissionStatus {
 
 @MainActor
 private final class ClickMacroViewModel: ObservableObject {
+    private let startDelaySeconds = 3
+
     @Published var intervalMilliseconds: String = "100"
     @Published var repeatCount: String = "100"
     @Published var mouseButton: ClickMouseButton = .left
     @Published var useFixedPosition = false
     @Published private(set) var clickCount = 0
+    @Published private(set) var currentRunTargetCount = 0
     @Published private(set) var isRunning = false
+    @Published private(set) var isStartScheduled = false
     @Published private(set) var accessibilityGranted = AXIsProcessTrusted()
-    @Published private(set) var statusMessage = "Ready."
+    @Published private(set) var statusMessage = "Start waits 3 seconds before running."
     @Published private(set) var savedPosition: CGPoint?
 
     private var timer: DispatchSourceTimer?
+    private var delayedStartTask: Task<Void, Never>?
+
+    var canStart: Bool {
+        guard !isRunning, !isStartScheduled else {
+            return false
+        }
+        guard parsedInterval != nil, parsedRepeatTarget != nil else {
+            return false
+        }
+        if useFixedPosition && savedPosition == nil {
+            return false
+        }
+        return true
+    }
+
+    var displayedProgressValue: Double {
+        let target = currentProgressTarget
+        guard target > 0 else {
+            return 0
+        }
+        return min(Double(clickCount) / Double(target), 1)
+    }
+
+    var progressPercentageText: String {
+        let target = currentProgressTarget
+        guard target > 0 else {
+            return "∞"
+        }
+        return "\(Int((displayedProgressValue * 100).rounded()))%"
+    }
 
     var savedPositionDescription: String {
         guard let savedPosition else {
@@ -364,14 +408,14 @@ private final class ClickMacroViewModel: ObservableObject {
     }
 
     func start() {
-        guard !isRunning else { return }
+        guard !isRunning, !isStartScheduled else { return }
 
-        guard let interval = Int(intervalMilliseconds), interval > 0 else {
+        guard let interval = parsedInterval else {
             statusMessage = "Interval must be a number greater than 0."
             return
         }
 
-        guard let repeatTarget = Int(repeatCount), repeatTarget >= 0 else {
+        guard let repeatTarget = parsedRepeatTarget else {
             statusMessage = "Repeat count must be 0 or greater."
             return
         }
@@ -387,20 +431,95 @@ private final class ClickMacroViewModel: ObservableObject {
             return
         }
 
+        scheduleDelayedStart(interval: interval, repeatTarget: repeatTarget)
+    }
+
+    func stop(reason: String = "Stopped.") {
+        let wasRunning = isRunning
+        let wasScheduled = isStartScheduled
+
+        delayedStartTask?.cancel()
+        delayedStartTask = nil
+        isStartScheduled = false
+
+        timer?.cancel()
+        timer = nil
+        isRunning = false
+
+        if wasRunning || wasScheduled {
+            statusMessage = reason
+        }
+    }
+
+    private var parsedInterval: Int? {
+        guard let interval = Int(intervalMilliseconds), interval > 0 else {
+            return nil
+        }
+        return interval
+    }
+
+    private var parsedRepeatTarget: Int? {
+        guard let repeatTarget = Int(repeatCount), repeatTarget >= 0 else {
+            return nil
+        }
+        return repeatTarget
+    }
+
+    private var currentProgressTarget: Int {
+        if currentRunTargetCount > 0 || isRunning || isStartScheduled || clickCount > 0 {
+            return currentRunTargetCount
+        }
+        return parsedRepeatTarget ?? 0
+    }
+
+    private func scheduleDelayedStart(interval: Int, repeatTarget: Int) {
+        delayedStartTask?.cancel()
+        timer?.cancel()
+        timer = nil
+
         clickCount = 0
-        isRunning = true
-        statusMessage = repeatTarget == 0 ? "Running. (infinite)" : "Running. (\(repeatTarget) clicks)"
+        currentRunTargetCount = repeatTarget
+        isStartScheduled = true
+        statusMessage = "Starting in \(startDelaySeconds)s..."
 
         let selectedButton = mouseButton
         let fixedPosition = useFixedPosition ? savedPosition : nil
-        let timer = DispatchSource.makeTimerSource(queue: DispatchQueue.global(qos: .userInteractive))
 
+        delayedStartTask = Task { [weak self] in
+            guard let self else { return }
+
+            for remaining in stride(from: self.startDelaySeconds, through: 1, by: -1) {
+                self.statusMessage = "Starting in \(remaining)s..."
+                do {
+                    try await Task.sleep(for: .seconds(1))
+                } catch {
+                    return
+                }
+                if Task.isCancelled {
+                    return
+                }
+            }
+
+            if Task.isCancelled {
+                return
+            }
+
+            self.isStartScheduled = false
+            self.beginClickRun(interval: interval, repeatTarget: repeatTarget, button: selectedButton, fixedPosition: fixedPosition)
+        }
+    }
+
+    private func beginClickRun(interval: Int, repeatTarget: Int, button: ClickMouseButton, fixedPosition: CGPoint?) {
+        isRunning = true
+        statusMessage = repeatTarget == 0 ? "Running. (infinite)" : "Running. (\(repeatTarget) clicks)"
+
+        let timer = DispatchSource.makeTimerSource(queue: DispatchQueue.global(qos: .userInteractive))
         timer.schedule(deadline: .now(), repeating: .milliseconds(interval))
         timer.setEventHandler { [weak self] in
             guard let self else { return }
 
             let position = fixedPosition ?? CGEvent(source: nil)?.location ?? .zero
-            self.postClick(at: position, button: selectedButton)
+            self.postClick(at: position, button: button)
 
             DispatchQueue.main.async {
                 guard self.isRunning else { return }
@@ -414,16 +533,6 @@ private final class ClickMacroViewModel: ObservableObject {
 
         self.timer = timer
         timer.resume()
-    }
-
-    func stop(reason: String = "Stopped.") {
-        timer?.cancel()
-        timer = nil
-
-        if isRunning {
-            statusMessage = reason
-        }
-        isRunning = false
     }
 
     private func checkAccessibilityPermission(prompt: Bool) -> Bool {
@@ -454,6 +563,7 @@ private final class ClickMacroViewModel: ObservableObject {
     }
 
     deinit {
+        delayedStartTask?.cancel()
         timer?.cancel()
     }
 }
