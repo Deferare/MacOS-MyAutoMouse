@@ -17,3 +17,7 @@ macOS에서 자동 클릭/마우스 이동 기능을 구현하기 위한 Xcode �
 
 - 사용자별/로컬 파일(`xcuserdata`, `*.xcuserstate`, `.DS_Store`)은 커밋하지 않습니다.
 - 빌드 산출물(`DerivedData`, `build`)은 커밋하지 않습니다.
+
+## Privacy Policy
+
+- [`PRIVACY_POLICY.md`](PRIVACY_POLICY.md)
