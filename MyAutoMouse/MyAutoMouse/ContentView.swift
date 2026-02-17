@@ -75,53 +75,58 @@ private struct ClickView: View {
 
     var body: some View {
         Form {
-            Section("Click Macro") {
-                HStack(alignment: .center) {
-                    FormRowLabel(
-                        "Interval (ms)",
-                        subtitle: "Time between clicks in milliseconds."
-                    )
-                    Spacer()
-                    TextField("", text: $viewModel.intervalMilliseconds, prompt: Text("100"))
+            Section {
+                LabeledContent {
+                    HStack {
+                        TextField("", text: $viewModel.intervalMilliseconds, prompt: Text("100"))
+                            .labelsHidden()
+                            .textFieldStyle(.roundedBorder)
+                            .frame(width: 80)
+                            .multilineTextAlignment(.trailing)
+                        
+                        Stepper("", value: Binding(get: {
+                            Int(viewModel.intervalMilliseconds) ?? 100
+                        }, set: {
+                            viewModel.intervalMilliseconds = String($0)
+                        }), in: 10...10000, step: 10)
                         .labelsHidden()
-                        .textFieldStyle(.roundedBorder)
-                        .frame(width: 120)
-                        .multilineTextAlignment(.trailing)
-                    .frame(width: 220, alignment: .trailing)
-                }
-
-                HStack(alignment: .center) {
-                    FormRowLabel(
-                        "Repeat Count",
-                        subtitle: "Set 0 to run continuously."
-                    )
-                    Spacer()
-                    TextField("", text: $viewModel.repeatCount, prompt: Text("100"))
-                        .labelsHidden()
-                        .textFieldStyle(.roundedBorder)
-                        .frame(width: 120)
-                        .multilineTextAlignment(.trailing)
-                        .frame(width: 220, alignment: .trailing)
-                }
-
-                HStack(alignment: .center) {
-                    FormRowLabel(
-                        "Button",
-                        subtitle: "Choose the mouse button to automate."
-                    )
-                    Spacer()
-                    Picker("", selection: $viewModel.mouseButton) {
-                        ForEach(ClickMouseButton.allCases) { button in
-                            Text(button.title).tag(button)
-                        }
                     }
-                    .pickerStyle(.segmented)
-                    .labelsHidden()
-                    .frame(width: 220, alignment: .trailing)
+                } label: {
+                    FormRowLabel("Interval (ms)", subtitle: "Time between clicks in milliseconds.")
                 }
+
+                LabeledContent {
+                    HStack {
+                        TextField("", text: $viewModel.repeatCount, prompt: Text("100"))
+                            .labelsHidden()
+                            .textFieldStyle(.roundedBorder)
+                            .frame(width: 80)
+                            .multilineTextAlignment(.trailing)
+                        
+                        Stepper("", value: Binding(get: {
+                            Int(viewModel.repeatCount) ?? 100
+                        }, set: {
+                            viewModel.repeatCount = String($0)
+                        }), in: 0...1000000, step: 100)
+                        .labelsHidden()
+                    }
+                } label: {
+                    FormRowLabel("Repeat Count", subtitle: "Set 0 to run continuously.")
+                }
+
+                Picker(selection: $viewModel.mouseButton) {
+                    ForEach(ClickMouseButton.allCases) { button in
+                        Text(button.title).tag(button)
+                    }
+                } label: {
+                    FormRowLabel("Button", subtitle: "Choose the mouse button to automate.")
+                }
+                .pickerStyle(.segmented)
+            } header: {
+                Text("Click Macro")
             }
 
-            Section("Position") {
+            Section {
                 Toggle(isOn: $viewModel.useFixedPosition) {
                     FormRowLabel(
                         "Use Fixed Position",
@@ -134,7 +139,6 @@ private struct ClickView: View {
                     Text(viewModel.savedPositionDescription)
                         .foregroundStyle(.secondary)
                         .monospacedDigit()
-                        .frame(maxWidth: .infinity, alignment: .trailing)
                 } label: {
                     FormRowLabel(
                         "Saved Position",
@@ -142,7 +146,7 @@ private struct ClickView: View {
                     )
                 }
 
-                HStack(alignment: .center) {
+                HStack {
                     FormRowLabel(
                         "Capture Cursor",
                         subtitle: "Save the current cursor location."
@@ -152,11 +156,14 @@ private struct ClickView: View {
                         viewModel.captureCurrentCursorPosition()
                     }
                     .disabled(viewModel.isRunning || viewModel.isStartScheduled)
+                    .buttonStyle(.bordered)
                 }
+            } header: {
+                Text("Position")
             }
 
-            Section("Permissions") {
-                HStack(alignment: .center) {
+            Section {
+                HStack {
                     FormRowLabel(
                         "Accessibility",
                         subtitle: "Required to post synthetic mouse events."
@@ -166,9 +173,10 @@ private struct ClickView: View {
                     Button("Request…") {
                         viewModel.requestAccessibilityPermission()
                     }
+                    .buttonStyle(.bordered)
                 }
 
-                HStack(alignment: .center) {
+                HStack {
                     FormRowLabel(
                         "System Settings",
                         subtitle: "Open Privacy & Security > Accessibility."
@@ -177,7 +185,10 @@ private struct ClickView: View {
                     Button("Open…") {
                         viewModel.openAccessibilitySettings()
                     }
+                    .buttonStyle(.bordered)
                 }
+            } header: {
+                Text("Permissions")
             }
         }
         .safeAreaInset(edge: .bottom) {
@@ -192,26 +203,26 @@ private struct ClickView: View {
 
     private var runControlBar: some View {
         HStack(spacing: 24) {
-            VStack(alignment: .leading, spacing: 8) {
+            VStack(alignment: .leading, spacing: 6) {
                 HStack(alignment: .lastTextBaseline) {
                     Text(viewModel.statusMessage)
-                        .font(.subheadline.weight(.semibold))
-                        .foregroundStyle(.secondary)
-                        .lineLimit(1)
+                        .font(.system(size: 11, weight: .medium))
+                        .foregroundStyle((viewModel.isRunning || viewModel.isStartScheduled) ? .primary : .secondary)
+                        .animation(.default, value: viewModel.statusMessage)
 
                     Spacer()
 
-                    Text(viewModel.progressPercentageText)
-                        .font(.system(.caption, design: .monospaced).weight(.bold))
-                        .foregroundStyle(.secondary)
+                    if viewModel.currentRunTargetCount > 0 {
+                        Text(viewModel.progressPercentageText)
+                            .font(.system(size: 10, design: .monospaced).weight(.bold))
+                            .foregroundStyle(.secondary)
+                    }
                 }
 
                 ProgressView(value: viewModel.displayedProgressValue, total: 1.0)
                     .progressViewStyle(.linear)
-                    .tint(progressTint)
-                    .scaleEffect(x: 1, y: 2, anchor: .center)
-                    .clipShape(Capsule())
-                    .animation(.spring(), value: viewModel.displayedProgressValue)
+                    .tint(Color.accentColor)
+                    .animation(.spring(response: 0.3, dampingFraction: 0.7), value: viewModel.displayedProgressValue)
             }
 
             Button {
@@ -221,13 +232,13 @@ private struct ClickView: View {
                     viewModel.start()
                 }
             } label: {
-                HStack(spacing: 10) {
+                HStack(spacing: 8) {
                     Image(systemName: (viewModel.isRunning || viewModel.isStartScheduled) ? "stop.fill" : "play.fill")
-                        .font(.system(size: 14, weight: .black))
+                        .imageScale(.small)
                     Text((viewModel.isRunning || viewModel.isStartScheduled) ? "Stop" : "Start")
-                        .font(.system(size: 14, weight: .bold))
+                        .font(.headline)
                 }
-                .frame(minWidth: 130, minHeight: 44)
+                .frame(width: 100, height: 32)
             }
             .keyboardShortcut(.return, modifiers: [])
             .buttonStyle(.borderedProminent)
@@ -236,16 +247,12 @@ private struct ClickView: View {
         }
     }
 
-    private var progressTint: Color {
-        viewModel.displayedProgressValue > 0 ? .accentColor : .clear
-    }
-
     private func bottomControlContainer<Content: View>(@ViewBuilder content: () -> Content) -> some View {
         content()
             .padding(.horizontal, 24)
-            .padding(.vertical, 20)
+            .padding(.vertical, 16)
             .background(.ultraThinMaterial)
-            .overlay(Rectangle().frame(height: 1).foregroundStyle(.primary.opacity(0.05)), alignment: .top)
+            .overlay(Divider(), alignment: .top)
     }
 }
 
@@ -259,22 +266,16 @@ private struct FormRowLabel: View {
     }
 
     var body: some View {
-        VStack(alignment: .leading, spacing: 2) {
+        VStack(alignment: .leading, spacing: 1) {
             Text(title)
-                .multilineTextAlignment(.leading)
-                .frame(maxWidth: .infinity, alignment: .leading)
-
+                .font(.body)
+            
             if let subtitle {
                 Text(subtitle)
                     .font(.caption)
                     .foregroundStyle(.secondary)
-                    .multilineTextAlignment(.leading)
-                    .frame(maxWidth: .infinity, alignment: .leading)
                     .fixedSize(horizontal: false, vertical: true)
             }
-        }
-        .alignmentGuide(.firstTextBaseline) { dimensions in
-            dimensions[VerticalAlignment.center]
         }
     }
 }
@@ -283,11 +284,13 @@ private struct PermissionStatusBadge: View {
     let status: PermissionStatus
 
     var body: some View {
-        HStack(spacing: 6) {
-            Image(systemName: status.icon)
-            Text(status.title)
-        }
-        .foregroundStyle(status.color)
+        Label(status.title, systemImage: status.icon)
+            .font(.caption.weight(.medium))
+            .foregroundStyle(status.color)
+            .padding(.horizontal, 8)
+            .padding(.vertical, 2)
+            .background(status.color.opacity(0.1))
+            .clipShape(Capsule())
     }
 }
 
@@ -297,28 +300,22 @@ private enum PermissionStatus {
 
     var title: String {
         switch self {
-        case .granted:
-            return "Granted"
-        case .notGranted:
-            return "Not granted"
+        case .granted: return "Granted"
+        case .notGranted: return "Denied"
         }
     }
 
     var icon: String {
         switch self {
-        case .granted:
-            return "checkmark.circle.fill"
-        case .notGranted:
-            return "exclamationmark.triangle.fill"
+        case .granted: return "checkmark.circle.fill"
+        case .notGranted: return "exclamationmark.triangle.fill"
         }
     }
 
     var color: Color {
         switch self {
-        case .granted:
-            return .green
-        case .notGranted:
-            return .orange
+        case .granted: return .green
+        case .notGranted: return .orange
         }
     }
 }
@@ -336,7 +333,7 @@ private final class ClickMacroViewModel: ObservableObject {
     @Published private(set) var isRunning = false
     @Published private(set) var isStartScheduled = false
     @Published private(set) var accessibilityGranted = AXIsProcessTrusted()
-    @Published private(set) var statusMessage = "Start waits 3 seconds before running."
+    @Published private(set) var statusMessage = "Ready to start."
     @Published private(set) var savedPosition: CGPoint?
 
     private var timer: DispatchSourceTimer?
@@ -346,7 +343,10 @@ private final class ClickMacroViewModel: ObservableObject {
         guard !isRunning, !isStartScheduled else {
             return false
         }
-        guard parsedInterval != nil, parsedRepeatTarget != nil else {
+        guard let interval = Int(intervalMilliseconds), interval > 0 else {
+            return false
+        }
+        guard let repeatTarget = Int(repeatCount), repeatTarget >= 0 else {
             return false
         }
         if useFixedPosition && savedPosition == nil {
@@ -358,7 +358,7 @@ private final class ClickMacroViewModel: ObservableObject {
     var displayedProgressValue: Double {
         let target = currentProgressTarget
         guard target > 0 else {
-            return 0
+            return isRunning ? 1.0 : 0.0
         }
         return min(Double(clickCount) / Double(target), 1)
     }
@@ -366,7 +366,7 @@ private final class ClickMacroViewModel: ObservableObject {
     var progressPercentageText: String {
         let target = currentProgressTarget
         guard target > 0 else {
-            return "∞"
+            return ""
         }
         return "\(Int((displayedProgressValue * 100).rounded()))%"
     }
@@ -375,7 +375,7 @@ private final class ClickMacroViewModel: ObservableObject {
         guard let savedPosition else {
             return "No saved position."
         }
-        return "X: \(Int(savedPosition.x)), Y: \(Int(savedPosition.y))"
+        return "\(Int(savedPosition.x)), \(Int(savedPosition.y))"
     }
 
     func refreshAccessibilityStatus() {
@@ -385,9 +385,9 @@ private final class ClickMacroViewModel: ObservableObject {
     func requestAccessibilityPermission() {
         accessibilityGranted = checkAccessibilityPermission(prompt: true)
         if accessibilityGranted {
-            statusMessage = "Accessibility permission granted."
+            statusMessage = "Permission granted."
         } else {
-            statusMessage = "Allow accessibility access in System Settings > Privacy & Security > Accessibility."
+            statusMessage = "Accessibility denied."
         }
     }
 
@@ -400,34 +400,34 @@ private final class ClickMacroViewModel: ObservableObject {
 
     func captureCurrentCursorPosition() {
         guard let currentPosition = CGEvent(source: nil)?.location else {
-            statusMessage = "Could not read current cursor position."
+            statusMessage = "Capture failed."
             return
         }
         savedPosition = currentPosition
-        statusMessage = "Saved current cursor position."
+        statusMessage = "Position captured."
     }
 
     func start() {
         guard !isRunning, !isStartScheduled else { return }
 
-        guard let interval = parsedInterval else {
-            statusMessage = "Interval must be a number greater than 0."
+        guard let interval = Int(intervalMilliseconds), interval > 0 else {
+            statusMessage = "Invalid interval."
             return
         }
 
-        guard let repeatTarget = parsedRepeatTarget else {
-            statusMessage = "Repeat count must be 0 or greater."
+        guard let repeatTarget = Int(repeatCount), repeatTarget >= 0 else {
+            statusMessage = "Invalid repeat count."
             return
         }
 
         if useFixedPosition && savedPosition == nil {
-            statusMessage = "Capture a cursor position first, or disable fixed position."
+            statusMessage = "Capture position first."
             return
         }
 
         accessibilityGranted = checkAccessibilityPermission(prompt: true)
         guard accessibilityGranted else {
-            statusMessage = "Accessibility permission is required before starting."
+            statusMessage = "Permission required."
             return
         }
 
@@ -451,25 +451,11 @@ private final class ClickMacroViewModel: ObservableObject {
         }
     }
 
-    private var parsedInterval: Int? {
-        guard let interval = Int(intervalMilliseconds), interval > 0 else {
-            return nil
-        }
-        return interval
-    }
-
-    private var parsedRepeatTarget: Int? {
-        guard let repeatTarget = Int(repeatCount), repeatTarget >= 0 else {
-            return nil
-        }
-        return repeatTarget
-    }
-
     private var currentProgressTarget: Int {
         if currentRunTargetCount > 0 || isRunning || isStartScheduled || clickCount > 0 {
             return currentRunTargetCount
         }
-        return parsedRepeatTarget ?? 0
+        return Int(repeatCount) ?? 0
     }
 
     private func scheduleDelayedStart(interval: Int, repeatTarget: Int) {
@@ -511,7 +497,7 @@ private final class ClickMacroViewModel: ObservableObject {
 
     private func beginClickRun(interval: Int, repeatTarget: Int, button: ClickMouseButton, fixedPosition: CGPoint?) {
         isRunning = true
-        statusMessage = repeatTarget == 0 ? "Running. (infinite)" : "Running. (\(repeatTarget) clicks)"
+        statusMessage = repeatTarget == 0 ? "Running..." : "Running (\(repeatTarget) clicks)"
 
         let timer = DispatchSource.makeTimerSource(queue: DispatchQueue.global(qos: .userInteractive))
         timer.schedule(deadline: .now(), repeating: .milliseconds(interval))
@@ -526,7 +512,7 @@ private final class ClickMacroViewModel: ObservableObject {
                 self.clickCount += 1
 
                 if repeatTarget > 0, self.clickCount >= repeatTarget {
-                    self.stop(reason: "Completed \(repeatTarget) clicks.")
+                    self.stop(reason: "Finished.")
                 }
             }
         }
@@ -613,21 +599,56 @@ private enum ClickMouseButton: String, CaseIterable, Identifiable {
 
 private struct AboutView: View {
     var body: some View {
-        Form {
-            Section("MyAutoMouse") {
-                FormRowLabel(
-                    "MyAutoMouse",
-                    subtitle: "A macOS mouse macro utility focused on auto-click workflows."
-                )
-                FormRowLabel(
-                    "Permissions",
-                    subtitle: "Accessibility permission is required for posting mouse events."
-                )
-                FormRowLabel(
-                    "Usage",
-                    subtitle: "Set interval and repeat count, then start the click macro."
-                )
+        VStack(spacing: 24) {
+            Spacer()
+            
+            Image(systemName: "cursorarrow.click.badge.clock")
+                .font(.system(size: 72))
+                .symbolRenderingMode(.hierarchical)
+                .foregroundStyle(Color.accentColor)
+            
+            VStack(spacing: 8) {
+                Text("MyAutoMouse")
+                    .font(.title.bold())
+                
+                Text("Version 1.0.0")
+                    .font(.caption)
+                    .foregroundStyle(.secondary)
             }
+            
+            Text("A minimalist mouse macro utility for macOS.")
+                .font(.subheadline)
+                .multilineTextAlignment(.center)
+                .padding(.horizontal)
+            
+            Divider()
+                .frame(width: 200)
+            
+            VStack(alignment: .leading, spacing: 12) {
+                AboutBullet(icon: "lock.shield", text: "Requires Accessibility permission")
+                AboutBullet(icon: "cursorarrow.rays", text: "Supports fixed or relative clicks")
+                AboutBullet(icon: "timer", text: "Adjustable interval and repeat count")
+            }
+            
+            Spacer()
+        }
+        .padding()
+    }
+}
+
+private struct AboutBullet: View {
+    let icon: String
+    let text: String
+    
+    var body: some View {
+        HStack(spacing: 12) {
+            Image(systemName: icon)
+                .symbolRenderingMode(.hierarchical)
+                .foregroundStyle(Color.accentColor)
+                .frame(width: 20)
+            
+            Text(text)
+                .font(.subheadline)
         }
     }
 }
