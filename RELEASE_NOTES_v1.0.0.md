@@ -14,7 +14,8 @@
 ## 다운로드 파일
 
 - `MyAutoMouse-macOS-v1.0.0.zip`
-- SHA-256: `235e0ca76eb37c25908d4c1b2242379970a238c34e3156138fb3ee6282b1057e`
+- SHA-256: `7914b6ed982b8898712bf51d04c512866138dbe65266c321a1adc4cca3e9c2fc`
+- Notarization Submission ID: `4d6486cb-36e7-4135-b633-bd5cc4e1599a` (Accepted)
 
 ## 참고
 
